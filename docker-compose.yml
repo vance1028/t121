@@ -1,0 +1,36 @@
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: clinrand
+      POSTGRES_USER: clinrand
+      POSTGRES_PASSWORD: clinrand123
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clinrand -d clinrand"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  server:
+    build: .
+    ports:
+      - "7455:7455"
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: clinrand
+      DB_USER: clinrand
+      DB_PASSWORD: clinrand123
+      PORT: 7455
+      NODE_ENV: production
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
