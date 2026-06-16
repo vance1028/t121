@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS subjects (
     age_group VARCHAR(50),
     gender VARCHAR(20),
     disease_stage VARCHAR(50),
+    stratification_data JSONB DEFAULT '{}'::jsonb,
     allocation_status VARCHAR(50) NOT NULL DEFAULT 'pending',
     drug_code VARCHAR(100),
     group_id INTEGER REFERENCES groups(id),
@@ -88,6 +89,8 @@ CREATE INDEX IF NOT EXISTS idx_subjects_status ON subjects(allocation_status);
 CREATE INDEX IF NOT EXISTS idx_allocation_seq_trial ON allocation_sequences(trial_id);
 CREATE INDEX IF NOT EXISTS idx_allocation_seq_strat ON allocation_sequences(stratification_key, position);
 CREATE INDEX IF NOT EXISTS idx_allocation_seq_used ON allocation_sequences(used);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_allocation_seq_unique ON allocation_sequences(trial_id, stratification_key, position);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_allocation_seq_drug_code ON allocation_sequences(drug_code);
 CREATE INDEX IF NOT EXISTS idx_unblind_subject ON unblind_records(subject_id);
 `;
 

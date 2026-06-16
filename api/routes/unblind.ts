@@ -74,18 +74,37 @@ router.post('/', async (req: AuthRequest, res: Response): Promise<void> => {
 router.get('/records', async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const trialId = req.query.trial_id;
-    let query = `SELECT ur.*, s.subject_code, u.username as operator_name
-                 FROM unblind_records ur
-                 JOIN subjects s ON ur.subject_id = s.id
-                 JOIN users u ON ur.unblinded_by = u.id`;
+    const page = parseInt(req.query.page as string) || 1;
+    const pageSize = parseInt(req.query.page_size as string) || 20;
+    const offset = (page - 1) * pageSize;
+
+    let countQuery = 'SELECT COUNT(*)::int as total FROM unblind_records ur JOIN subjects s ON ur.subject_id = s.id';
+    let dataQuery = `SELECT ur.*, s.subject_code, u.username as operator_name
+                     FROM unblind_records ur
+                     JOIN subjects s ON ur.subject_id = s.id
+                     JOIN users u ON ur.unblinded_by = u.id`;
     const params: any[] = [];
     if (trialId) {
       params.push(trialId);
-      query += ` WHERE s.trial_id = $${params.length}`;
+      const whereClause = ` WHERE s.trial_id = $${params.length}`;
+      countQuery += whereClause;
+      dataQuery += whereClause;
     }
-    query += ' ORDER BY ur.unblinded_at DESC';
-    const result = await pool.query(query, params);
-    res.json({ success: true, data: result.rows });
+    dataQuery += ' ORDER BY ur.unblinded_at DESC LIMIT $' + (params.length + 1) + ' OFFSET $' + (params.length + 2);
+
+    const countResult = await pool.query(countQuery, params);
+    const dataResult = await pool.query(dataQuery, [...params, pageSize, offset]);
+
+    res.json({
+      success: true,
+      data: {
+        items: dataResult.rows,
+        total: countResult.rows[0].total,
+        page,
+        page_size: pageSize,
+        total_pages: Math.ceil(countResult.rows[0].total / pageSize),
+      },
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: '获取揭盲记录失败' });
   }

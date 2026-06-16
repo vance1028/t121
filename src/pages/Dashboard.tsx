@@ -89,19 +89,15 @@ export default function Dashboard() {
             <StatCard
               icon={TrendingUp}
               label="组间最大偏差"
-              value={(() => {
-                const counts = overview.byGroup.map((g: any) => g.count);
-                if (counts.length < 2) return '0%';
-                const max = Math.max(...counts);
-                const min = Math.min(...counts);
-                return max > 0 ? `${Math.round((max - min) / max * 100)}%` : '0%';
-              })()}
+              value={overview.max_deviation !== undefined && overview.max_deviation !== null
+                ? `${Math.round(overview.max_deviation)}%`
+                : '0%'}
               color="amber"
             />
             <StatCard
               icon={AlertTriangle}
               label="已揭盲"
-              value={overview.byGroup.reduce((sum: number, g: any) => sum + g.count, 0) - overview.total > 0 ? 0 : '—'}
+              value={overview.unblinded !== undefined && overview.unblinded !== null ? overview.unblinded : 0}
               color="rose"
             />
           </div>

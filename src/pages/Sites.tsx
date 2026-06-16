@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { api } from '@/utils/api';
 import { Plus, Edit2, Trash2, X, Save } from 'lucide-react';
+import { toastSuccess, toastError } from '@/stores/toastStore';
+import ConfirmDialog from '@/components/ConfirmDialog';
 
 export default function Sites() {
   const [sites, setSites] = useState<any[]>([]);
@@ -10,6 +12,7 @@ export default function Sites() {
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState({ trial_id: 0, name: '', code: '' });
+  const [deleteId, setDeleteId] = useState<number | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -32,14 +35,16 @@ export default function Sites() {
     try {
       if (editId) {
         await api.sites.update(editId, { name: form.name, code: form.code });
+        toastSuccess('中心信息已更新');
       } else {
         await api.sites.create({ ...form, trial_id: trialId });
+        toastSuccess('中心创建成功');
       }
       setShowForm(false);
       setEditId(null);
       setForm({ trial_id: 0, name: '', code: '' });
       api.sites.list(trialId!).then(setSites);
-    } catch (err: any) { alert(err.message); }
+    } catch (err: any) { toastError(err.message); }
   };
 
   const handleEdit = (site: any) => {
@@ -48,9 +53,21 @@ export default function Sites() {
     setShowForm(true);
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('确定删除此研究中心？')) return;
-    try { await api.sites.delete(id); api.sites.list(trialId!).then(setSites); } catch (err: any) { alert(err.message); }
+  const handleDelete = (id: number) => {
+    setDeleteId(id);
+  };
+
+  const confirmDelete = async () => {
+    if (deleteId === null) return;
+    try {
+      await api.sites.delete(deleteId);
+      toastSuccess('中心已删除');
+      api.sites.list(trialId!).then(setSites);
+    } catch (err: any) {
+      toastError(err.message);
+    } finally {
+      setDeleteId(null);
+    }
   };
 
   return (
@@ -126,6 +143,17 @@ export default function Sites() {
         </table>
         {sites.length === 0 && !loading && <div className="text-center py-12 text-slate-400 text-sm">暂无研究中心</div>}
       </div>
+
+      <ConfirmDialog
+        open={deleteId !== null}
+        title="删除研究中心"
+        message="确定删除此研究中心吗？关联的受试者数据也会受到影响。"
+        confirmText="删除"
+        cancelText="取消"
+        confirmVariant="danger"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteId(null)}
+      />
     </div>
   );
 }

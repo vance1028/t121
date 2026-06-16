@@ -2,12 +2,15 @@ import { useState, useEffect } from 'react';
 import { api } from '@/utils/api';
 import { Plus, Edit2, Trash2, ChevronRight, Settings, X, Save } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { toastSuccess, toastError } from '@/stores/toastStore';
+import ConfirmDialog from '@/components/ConfirmDialog';
 
 export default function Trials() {
   const [trials, setTrials] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ name: '', description: '', randomization_method: 'stratified_block', block_sizes: '4,6', minimization_probability: '0.70', seed: '42' });
+  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; id: number | null }>({ open: false, id: null });
   const navigate = useNavigate();
 
   const load = () => {
@@ -28,19 +31,27 @@ export default function Trials() {
       });
       setShowForm(false);
       setForm({ name: '', description: '', randomization_method: 'stratified_block', block_sizes: '4,6', minimization_probability: '0.70', seed: '42' });
+      toastSuccess('试验创建成功');
       load();
     } catch (err: any) {
-      alert(err.message);
+      toastError(err.message);
     }
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm('确定要删除此试验项目吗？关联数据将一并删除。')) return;
+    setDeleteConfirm({ open: true, id });
+  };
+
+  const confirmDelete = async () => {
+    if (deleteConfirm.id === null) return;
     try {
-      await api.trials.delete(id);
+      await api.trials.delete(deleteConfirm.id);
+      toastSuccess('试验已删除');
       load();
     } catch (err: any) {
-      alert(err.message);
+      toastError(err.message);
+    } finally {
+      setDeleteConfirm({ open: false, id: null });
     }
   };
 
@@ -167,6 +178,17 @@ export default function Trials() {
           <div className="text-center py-12 text-slate-400 text-sm">暂无试验项目</div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={deleteConfirm.open}
+        title="删除试验"
+        message="确定要删除此试验项目吗？关联的组别、分层因素、中心、受试者等所有数据将一并删除，此操作不可恢复。"
+        confirmText="删除"
+        cancelText="取消"
+        confirmVariant="danger"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteConfirm({ open: false, id: null })}
+      />
     </div>
   );
 }

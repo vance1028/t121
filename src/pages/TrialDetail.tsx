@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { api } from '@/utils/api';
 import { Plus, Trash2, X, Save } from 'lucide-react';
+import { toastSuccess, toastError, toastInfo } from '@/stores/toastStore';
+import ConfirmDialog from '@/components/ConfirmDialog';
 
 export default function TrialDetail() {
   const { id } = useParams();
@@ -11,6 +13,13 @@ export default function TrialDetail() {
   const [showFactorForm, setShowFactorForm] = useState(false);
   const [groupForm, setGroupForm] = useState({ name: '', code: '', ratio: 1 });
   const [factorForm, setFactorForm] = useState({ name: '', levels: '' });
+  const [confirmState, setConfirmState] = useState<{
+    open: boolean;
+    type: 'deleteGroup' | 'deleteFactor' | 'generateSeq' | null;
+    targetId?: number;
+    title: string;
+    message: string;
+  }>({ open: false, type: null, title: '', message: '' });
 
   const load = () => {
     if (!id) return;
@@ -26,8 +35,9 @@ export default function TrialDetail() {
       await api.trials.addGroup(Number(id), groupForm);
       setShowGroupForm(false);
       setGroupForm({ name: '', code: '', ratio: 1 });
+      toastSuccess('组别添加成功');
       load();
-    } catch (err: any) { alert(err.message); }
+    } catch (err: any) { toastError(err.message); }
   };
 
   const handleAddFactor = async (e: React.FormEvent) => {
@@ -36,27 +46,66 @@ export default function TrialDetail() {
       await api.trials.addFactor(Number(id), { name: factorForm.name, levels: factorForm.levels.split(',').map(s => s.trim()) });
       setShowFactorForm(false);
       setFactorForm({ name: '', levels: '' });
+      toastSuccess('分层因素添加成功');
       load();
-    } catch (err: any) { alert(err.message); }
+    } catch (err: any) { toastError(err.message); }
   };
 
-  const handleDeleteGroup = async (gid: number) => {
-    if (!confirm('确定删除此组别？')) return;
-    try { await api.trials.deleteGroup(gid); load(); } catch (err: any) { alert(err.message); }
+  const handleDeleteGroup = (gid: number) => {
+    setConfirmState({
+      open: true,
+      type: 'deleteGroup',
+      targetId: gid,
+      title: '删除组别',
+      message: '确定删除此组别吗？相关分配序列也会受到影响。',
+    });
   };
 
-  const handleDeleteFactor = async (fid: number) => {
-    if (!confirm('确定删除此分层因素？')) return;
-    try { await api.trials.deleteFactor(fid); load(); } catch (err: any) { alert(err.message); }
+  const handleDeleteFactor = (fid: number) => {
+    setConfirmState({
+      open: true,
+      type: 'deleteFactor',
+      targetId: fid,
+      title: '删除分层因素',
+      message: '确定删除此分层因素吗？已登记的受试者数据不会受影响。',
+    });
   };
 
-  const handleGenerateSequences = async () => {
-    if (!confirm('确定生成分配序列？已有序列不会被覆盖。')) return;
+  const handleGenerateSequences = () => {
+    setConfirmState({
+      open: true,
+      type: 'generateSeq',
+      title: '生成分配序列',
+      message: '确定生成分配序列吗？如果已有序列，将在现有基础上追加新序列，不会覆盖已使用的序列。',
+    });
+  };
+
+  const handleConfirm = async () => {
     try {
-      const result = await api.randomization.generate(Number(id));
-      alert(`已生成 ${result.count} 条分配序列（种子: ${result.seed}）`);
+      switch (confirmState.type) {
+        case 'deleteGroup':
+          await api.trials.deleteGroup(confirmState.targetId!);
+          toastSuccess('组别已删除');
+          break;
+        case 'deleteFactor':
+          await api.trials.deleteFactor(confirmState.targetId!);
+          toastSuccess('分层因素已删除');
+          break;
+        case 'generateSeq':
+          const result = await api.randomization.generate(Number(id));
+          if (result.is_extend) {
+            toastSuccess(`已追加 ${result.inserted_count} 条新序列，当前共 ${result.total_count} 条（种子: ${result.seed}）`);
+          } else {
+            toastSuccess(`已生成 ${result.inserted_count} 条分配序列（种子: ${result.seed}）`);
+          }
+          break;
+      }
       load();
-    } catch (err: any) { alert(err.message); }
+    } catch (err: any) {
+      toastError(err.message);
+    } finally {
+      setConfirmState(s => ({ ...s, open: false }));
+    }
   };
 
   if (loading || !trial) {
@@ -188,6 +237,17 @@ export default function TrialDetail() {
           </form>
         </Modal>
       )}
+
+      <ConfirmDialog
+        open={confirmState.open}
+        title={confirmState.title}
+        message={confirmState.message}
+        confirmText="确认"
+        cancelText="取消"
+        confirmVariant={confirmState.type?.startsWith('delete') ? 'danger' : 'primary'}
+        onConfirm={handleConfirm}
+        onCancel={() => setConfirmState(s => ({ ...s, open: false }))}
+      />
     </div>
   );
 }

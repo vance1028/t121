@@ -15,6 +15,12 @@ router.get('/overview/:trialId', async (req: AuthRequest, res: Response): Promis
     );
     const total = totalResult.rows[0].total;
 
+    const unblindTotalResult = await pool.query(
+      "SELECT COUNT(*)::int as unblinded FROM subjects WHERE trial_id = $1 AND allocation_status = 'unblinded'",
+      [trialId]
+    );
+    const unblinded = unblindTotalResult.rows[0].unblinded;
+
     const byGroupResult = await pool.query(
       `SELECT g.id as group_id, g.name as group_name, g.ratio, COUNT(s.id)::int as count
        FROM groups g
@@ -40,7 +46,20 @@ router.get('/overview/:trialId', async (req: AuthRequest, res: Response): Promis
       ...r,
       percentage: total > 0 ? Math.round(r.count / total * 100) : 0,
       expected_percentage: Math.round(r.ratio / totalRatio * 100),
+      expected_count: Math.round(total * r.ratio / totalRatio),
     }));
+
+    let maxDeviation = 0;
+    if (total > 0) {
+      for (const g of byGroup) {
+        const expected = total * g.ratio / totalRatio;
+        if (expected > 0) {
+          const deviation = Math.abs(g.count - expected) / expected * 100;
+          if (deviation > maxDeviation) maxDeviation = deviation;
+        }
+      }
+    }
+    maxDeviation = Math.round(maxDeviation);
 
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
@@ -53,7 +72,7 @@ router.get('/overview/:trialId', async (req: AuthRequest, res: Response): Promis
 
     res.json({
       success: true,
-      data: { total, byGroup, bySite: bySiteResult.rows, enrollmentRate },
+      data: { total, unblinded, byGroup, bySite: bySiteResult.rows, enrollmentRate, max_deviation: maxDeviation },
     });
   } catch (err) {
     console.error('Dashboard overview error:', err);

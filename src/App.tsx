@@ -8,10 +8,12 @@ import TrialDetail from "@/pages/TrialDetail";
 import Sites from "@/pages/Sites";
 import Subjects from "@/pages/Subjects";
 import Blinding from "@/pages/Blinding";
+import ToastContainer from "@/components/Toast";
 
 export default function App() {
   return (
     <Router>
+      <ToastContainer />
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>

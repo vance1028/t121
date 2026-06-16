@@ -29,7 +29,7 @@ export default function Layout() {
 
   return (
     <div className="flex h-screen bg-slate-50">
-      <aside className="w-64 bg-[#1e3a5f] text-white flex flex-col flex-shrink-0">
+      <aside className="w-64 bg-[#1e3a5f] text-white flex flex-col flex-shrink-0 z-30 relative">
         <div className="px-6 py-5 border-b border-white/10">
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-7 h-7 text-sky-400" />

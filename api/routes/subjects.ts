@@ -10,10 +10,15 @@ router.get('/', async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const trialId = req.query.trial_id;
     const status = req.query.status;
-    let query = `SELECT s.*, si.name as site_name, g.name as group_name
-                 FROM subjects s
-                 LEFT JOIN sites si ON s.site_id = si.id
-                 LEFT JOIN groups g ON s.group_id = g.id`;
+    const page = parseInt(req.query.page as string) || 1;
+    const pageSize = parseInt(req.query.page_size as string) || 20;
+    const offset = (page - 1) * pageSize;
+
+    let countQuery = 'SELECT COUNT(*)::int as total FROM subjects s';
+    let dataQuery = `SELECT s.*, si.name as site_name, g.name as group_name
+                     FROM subjects s
+                     LEFT JOIN sites si ON s.site_id = si.id
+                     LEFT JOIN groups g ON s.group_id = g.id`;
     const params: any[] = [];
     const conditions: string[] = [];
     if (trialId) {
@@ -25,11 +30,25 @@ router.get('/', async (req: AuthRequest, res: Response): Promise<void> => {
       conditions.push(`s.allocation_status = $${params.length}`);
     }
     if (conditions.length > 0) {
-      query += ' WHERE ' + conditions.join(' AND ');
+      const whereClause = ' WHERE ' + conditions.join(' AND ');
+      countQuery += whereClause;
+      dataQuery += whereClause;
     }
-    query += ' ORDER BY s.enrolled_at DESC';
-    const result = await pool.query(query, params);
-    res.json({ success: true, data: result.rows });
+    dataQuery += ' ORDER BY s.enrolled_at DESC LIMIT $' + (params.length + 1) + ' OFFSET $' + (params.length + 2);
+
+    const countResult = await pool.query(countQuery, params);
+    const dataResult = await pool.query(dataQuery, [...params, pageSize, offset]);
+
+    res.json({
+      success: true,
+      data: {
+        items: dataResult.rows,
+        total: countResult.rows[0].total,
+        page,
+        page_size: pageSize,
+        total_pages: Math.ceil(countResult.rows[0].total / pageSize),
+      },
+    });
   } catch (err) {
     console.error('Get subjects error:', err);
     res.status(500).json({ success: false, error: '获取受试者列表失败' });
@@ -58,11 +77,22 @@ router.get('/:id', async (req: AuthRequest, res: Response): Promise<void> => {
 
 router.post('/', async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { trial_id, site_id, subject_code, initials, age_group, gender, disease_stage } = req.body;
+    const { trial_id, site_id, subject_code, initials, age_group, gender, disease_stage, stratification_data } = req.body;
+
+    const stratData = stratification_data || {};
+    const finalAgeGroup = age_group || stratData['年龄段'] || null;
+    const finalGender = gender || stratData['性别'] || null;
+    const finalStage = disease_stage || stratData['疾病分期'] || null;
+
+    const allStratData = { ...stratData };
+    if (finalAgeGroup) allStratData['年龄段'] = finalAgeGroup;
+    if (finalGender) allStratData['性别'] = finalGender;
+    if (finalStage) allStratData['疾病分期'] = finalStage;
+
     const result = await pool.query(
-      `INSERT INTO subjects (trial_id, site_id, subject_code, initials, age_group, gender, disease_stage)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [trial_id, site_id, subject_code, initials, age_group, gender, disease_stage]
+      `INSERT INTO subjects (trial_id, site_id, subject_code, initials, age_group, gender, disease_stage, stratification_data)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      [trial_id, site_id, subject_code, initials, finalAgeGroup, finalGender, finalStage, JSON.stringify(allStratData)]
     );
     res.status(201).json({ success: true, data: result.rows[0] });
   } catch (err: any) {
@@ -70,6 +100,7 @@ router.post('/', async (req: AuthRequest, res: Response): Promise<void> => {
       res.status(400).json({ success: false, error: '受试者编号已存在' });
       return;
     }
+    console.error('Create subject error:', err);
     res.status(500).json({ success: false, error: '创建受试者失败' });
   }
 });
@@ -137,12 +168,9 @@ router.post('/:id/allocate', async (req: AuthRequest, res: Response): Promise<vo
     let drugCode: string;
 
     if (trial.randomization_method === 'stratified_block') {
-      const colMap: Record<string, string> = { '年龄段': 'age_group', '性别': 'gender', '疾病分期': 'disease_stage' };
+      const stratData = subject.stratification_data || {};
       const stratKey = factors.length === 0 ? '__ALL__'
-        : factors.map((f: any) => {
-            const col = colMap[f.name] || f.name.toLowerCase().replace(/\s+/g, '_');
-            return `${f.name}=${subject[col] || ''}`;
-          }).join('|');
+        : factors.map((f: any) => `${f.name}=${stratData[f.name] || ''}`).join('|');
 
       const seqResult = await client.query(
         `SELECT * FROM allocation_sequences
@@ -170,12 +198,7 @@ router.post('/:id/allocate', async (req: AuthRequest, res: Response): Promise<vo
 
       const allocResult = await client.query(
         `SELECT s.group_id, sf.name as factor_name,
-                CASE
-                  WHEN sf.name = '年龄段' THEN s.age_group
-                  WHEN sf.name = '性别' THEN s.gender
-                  WHEN sf.name = '疾病分期' THEN s.disease_stage
-                  ELSE ''
-                END as factor_level,
+                COALESCE(s.stratification_data->>sf.name, '') as factor_level,
                 COUNT(*)::int as count
          FROM subjects s
          CROSS JOIN stratification_factors sf
@@ -184,11 +207,10 @@ router.post('/:id/allocate', async (req: AuthRequest, res: Response): Promise<vo
         [subject.trial_id]
       );
 
+      const stratData = subject.stratification_data || {};
       const subjectFactors: Record<string, string> = {};
-      const colMap: Record<string, string> = { '年龄段': 'age_group', '性别': 'gender', '疾病分期': 'disease_stage' };
       for (const f of factors) {
-        const col = colMap[f.name] || f.name.toLowerCase().replace(/\s+/g, '_');
-        subjectFactors[f.name] = subject[col] || '';
+        subjectFactors[f.name] = stratData[f.name] || '';
       }
 
       const config: RandomizationConfig = {

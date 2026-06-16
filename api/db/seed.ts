@@ -129,9 +129,13 @@ export async function seedData() {
     const allocatedDate = new Date(2024, 0, 11 + i);
 
     const subjectResult = await pool.query(
-      `INSERT INTO subjects (trial_id, site_id, subject_code, initials, age_group, gender, disease_stage, allocation_status, drug_code, group_id, enrolled_at, allocated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'allocated', $8, $9, $10, $11) RETURNING id`,
-      [trialId, siteId, subjectCode, initial, ageGroup, gender, stage, nextUnused.drug_code, nextUnused.group_id, enrolledDate, allocatedDate]
+      `INSERT INTO subjects (trial_id, site_id, subject_code, initials, age_group, gender, disease_stage, stratification_data, allocation_status, drug_code, group_id, enrolled_at, allocated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'allocated', $9, $10, $11, $12) RETURNING id`,
+      [
+        trialId, siteId, subjectCode, initial, ageGroup, gender, stage,
+        JSON.stringify({ '年龄段': ageGroup, '性别': gender, '疾病分期': stage }),
+        nextUnused.drug_code, nextUnused.group_id, enrolledDate, allocatedDate
+      ]
     );
 
     allocatedSubjectIds.push(subjectResult.rows[0].id);
@@ -181,9 +185,13 @@ export async function seedData() {
     const initial = initialsPool[(subjectCount + i) % initialsPool.length];
 
     await pool.query(
-      `INSERT INTO subjects (trial_id, site_id, subject_code, initials, age_group, gender, disease_stage, allocation_status, enrolled_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8)`,
-      [trialId, siteId, subjectCode, initial, ageGroup, gender, stage, new Date(2024, 2, 1 + i)]
+      `INSERT INTO subjects (trial_id, site_id, subject_code, initials, age_group, gender, disease_stage, stratification_data, allocation_status, enrolled_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9)`,
+      [
+        trialId, siteId, subjectCode, initial, ageGroup, gender, stage,
+        JSON.stringify({ '年龄段': ageGroup, '性别': gender, '疾病分期': stage }),
+        new Date(2024, 2, 1 + i)
+      ]
     );
   }
 

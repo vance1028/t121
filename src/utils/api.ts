@@ -1,3 +1,6 @@
+import { useAuthStore } from '@/stores/authStore';
+import { toastError } from '@/stores/toastStore';
+
 const API_BASE = '/api';
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -11,6 +14,16 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   }
 
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+
+  if (res.status === 401) {
+    useAuthStore.getState().logout();
+    toastError('登录已过期，请重新登录');
+    if (window.location.pathname !== '/login') {
+      window.location.href = '/login';
+    }
+    throw new Error('登录已过期');
+  }
+
   const data = await res.json();
 
   if (!data.success) {
@@ -48,8 +61,8 @@ export const api = {
     delete: (id: number) => request<void>(`/sites/${id}`, { method: 'DELETE' }),
   },
   subjects: {
-    list: (trialId?: number, status?: string) =>
-      request<any[]>(`/subjects${trialId ? `?trial_id=${trialId}` : ''}${status ? `&status=${status}` : ''}`),
+    list: (trialId?: number, status?: string, page?: number, pageSize?: number) =>
+      request<any>(`/subjects${trialId ? `?trial_id=${trialId}` : ''}${status ? `&status=${status}` : ''}${page ? `&page=${page}` : ''}${pageSize ? `&page_size=${pageSize}` : ''}`),
     get: (id: number) => request<any>(`/subjects/${id}`),
     create: (data: any) => request<any>('/subjects', { method: 'POST', body: JSON.stringify(data) }),
     update: (id: number, data: any) => request<any>(`/subjects/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
@@ -57,15 +70,15 @@ export const api = {
     allocate: (id: number) => request<any>(`/subjects/${id}/allocate`, { method: 'POST' }),
   },
   randomization: {
-    sequences: (trialId: number) => request<any[]>(`/randomization/sequences/${trialId}`),
+    sequences: (trialId: number, page?: number, pageSize?: number) => request<any>(`/randomization/sequences/${trialId}${page ? `?page=${page}&page_size=${pageSize}` : ''}`),
     generate: (trialId: number, seed?: number) =>
       request<any>(`/randomization/generate/${trialId}`, { method: 'POST', body: JSON.stringify({ seed }) }),
   },
   unblind: {
     create: (subjectId: number, reason: string) =>
       request<any>('/unblind', { method: 'POST', body: JSON.stringify({ subject_id: subjectId, reason }) }),
-    records: (trialId?: number) =>
-      request<any[]>(`/unblind/records${trialId ? `?trial_id=${trialId}` : ''}`),
+    records: (trialId?: number, page?: number, pageSize?: number) =>
+      request<any>(`/unblind/records${trialId ? `?trial_id=${trialId}` : ''}${page ? `&page=${page}&page_size=${pageSize}` : ''}`),
   },
   dashboard: {
     overview: (trialId: number) => request<any>(`/dashboard/overview/${trialId}`),
